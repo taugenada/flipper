@@ -1,0 +1,70 @@
+Import("ENV")
+
+
+from fbt.appmanifest import FlipperAppType
+
+appenv = ENV.Clone(tools=["fbt_extapps"])
+
+appenv.Replace(
+    LINKER_SCRIPT="application-ext",
+)
+
+appenv.AppendUnique(
+    CCFLAGS=[
+        # "-Os",
+        # "-Og",
+        "-ggdb3",
+        "-mword-relocations",
+        "-mlong-calls",
+        "-fno-common",
+        "-nostdlib",
+        "-fvisibility=hidden",
+    ],
+    LINKFLAGS=[
+        "-r",
+        # "-Bsymbolic",
+        "-nostartfiles",
+        "-mlong-calls",
+        "-fno-common",
+        "-nostdlib",
+        "-Wl,--gc-sections",
+        "-Wl,--no-export-dynamic",
+        "-fvisibility=hidden",
+        "-Wl,-e${APP_ENTRY}",
+        "-Xlinker",
+        "-Map=${TARGET}.map",
+    ],
+)
+
+
+extapps = {
+    "compact": [],
+    "debug": [],
+}
+
+
+def build_app_as_external(env, appdef):
+    compact_elf, debug_elf = env.BuildAppElf(appdef)
+    extapps["compact"].append(compact_elf)
+    extapps["debug"].append(debug_elf)
+
+for apptype in (FlipperAppType.PLUGIN, FlipperAppType.EXTERNAL):
+    for app in appenv["APPBUILD"].get_apps_of_type(apptype):
+        build_app_as_external(appenv, app)
+
+for apptype in (FlipperAppType.GAME, FlipperAppType.EXTERNAL):
+     for app in appenv["APPBUILD"].get_apps_of_type(apptype):
+        build_app_as_external(appenv, app)
+
+# Ugly access to global option
+if extra_app_list := GetOption("extra_ext_apps"):
+    for extra_app in extra_app_list.split(","):
+        build_app_as_external(appenv, appenv["APPMGR"].get(extra_app))
+
+
+if appenv["FORCE"]:
+    appenv.AlwaysBuild(extapps["compact"])
+
+Alias(appenv["FIRMWARE_BUILD_CFG"] + "_extapps", extapps["compact"])
+
+Return("extapps")
